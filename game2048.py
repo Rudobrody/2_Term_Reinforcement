@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use("Agg") # This line is blocking pop up windows and it jsut saved img
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
@@ -85,6 +87,95 @@ class Adversarial2048Env:
 
         return self.board.copy()
     
+    def get_legal_moves(self) -> list[int]:
+        """Returns a list of legac actions for the current player"""
+        if self.current_player == Player.SLIDER:
+            return self._get_slider_moves()
+        elif self.current_player == Player.SPAWNER:
+            return self._get_spawner_moves()
+
+
+    def _get_spawner_moves(self)-> list[int]:
+        """Private heler: Returns all empty cell indices"""
+        legal_moves = []
+
+        # All empty cells are legal moves
+        empties = self._get_empty_cells()
+        for r, c in empties:
+            legal_moves.append(r * self.grid_size + c)
+        return legal_moves
+    
+
+    def _get_slider_moves(self) -> list[int]:
+        """Private helper: Checks whic of the directions are valid"""
+        legal_moves = []
+
+        # Checking left side
+        can_left = False
+
+        # We take columns 1 to n
+        for r in range(self.grid_size):
+            for c in range(1, self.grid_size):
+                val = self.board[r, c]
+
+                # If there is non zero element so it has to have a neigbor, even 0
+                if val != 0:
+                    neighbor = self.board[r, c-1]
+                    if neighbor == 0 or neighbor == val:
+                        can_left = True
+                        break # If we found possible move left we don't check rest of rows
+            if can_left: break
+        if can_left: legal_moves.append(Action.LEFT.value)
+        
+        # Checking right side
+        can_right = False
+
+        # We take columns 0 to n-1 
+        for r in range(self.grid_size):
+            for c in range(0, self.grid_size - 1):
+                val = self.board[r, c]
+
+                if val != 0:
+                    neighbor = self.board[r, c+1]
+                    if neighbor == 0 or neighbor == val:
+                        can_right = True
+                        break 
+            if can_right: break
+        if can_right: legal_moves.append(Action.RIGHT.value)
+
+        # Checking up
+        can_up = False
+
+        # We take rows 1 to n 
+        for r in range(1, self.grid_size):
+            for c in range(self.grid_size):
+                val = self.board[r, c]
+
+                if val != 0:
+                    neighbor = self.board[r-1, c]
+                    if neighbor == 0 or neighbor == val:
+                        can_up = True
+                        break 
+            if can_up: break
+        if can_up: legal_moves.append(Action.UP.value)
+
+        # Checking down
+        can_down = False
+
+        # We take rows 0 to n-1 
+        for r in range(self.grid_size - 1):
+            for c in range(self.grid_size):
+                val = self.board[r, c]
+
+                if val != 0:
+                    neighbor = self.board[r+1, c]
+                    if neighbor == 0 or neighbor == val:
+                        can_down = True
+                        break 
+            if can_down: break
+        if can_down: legal_moves.append(Action.DOWN.value)
+        
+        return legal_moves
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, dict[str, any]]:
         """
@@ -143,7 +234,7 @@ class Adversarial2048Env:
 
         info['turn'] = self.current_player.name
         
-        return self.board.copy(), reward, 
+        return self.board.copy(), reward, game_over, info
 
 
     def _apply_slide(self, action: int) -> tuple[np.ndarray, float]:
@@ -202,7 +293,7 @@ class Adversarial2048Env:
                     new_row.append(row[i])
 
             # Fill with zeros
-            new_row += [0] * (self.grid_size) - len(new_row)
+            new_row += [0] * (self.grid_size - len(new_row))
             new_board[r] = np.array(new_row)
 
         return new_board, total_reward
@@ -264,8 +355,16 @@ class Adversarial2048Env:
         # Renders the plot
         fig.canvas.draw()
         
-        image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        # Get the RGBA buffer from the figure
+        image = np.frombuffer(fig.canvas.buffer_rgba(), dtype='uint8')
+        
+        # Reshape 
+        w, h = fig.canvas.get_width_height()
+        image = image.reshape((h, w, 4)) # 4 channels RGBA
+    
+        # Drop the alpha channel (transparency) to get RGB
+        image = image[:, :, :3]
+
         self.frames.append(image)
 
         plt.close(fig)
@@ -276,7 +375,7 @@ class Adversarial2048Env:
         if not self.frames:
             print("No frames to save")
             return
-        imageio.mimsave(filename, self.frames, fps=2)
+        imageio.mimsave(filename, self.frames, fps=0.2)
         print(f"GIF saved to {filename}")
 
 
@@ -288,23 +387,21 @@ if __name__ == "__main__":
     for _ in range(10):
         env.render()
 
-        if env.current_player == Player.SLIDER:
-            action = np.random.randint(0, 4) # Random slide
-        else:
-            # random spawn on empty spot, empties has a list of tuples
-            empties = env._get_empty_cells() 
-            if not empties: break
+        # Get legal moves, inside of function it is devided on cases 'current player'
+        legal_moves = env.get_legal_moves()
 
-            # Randomly choose and emptie
-            choice = empties[np.random.randint(len(empties))] 
-            
-            # Action from 0-8
-            action = choice[0] * env.grid_size + choice[1]
+        if not legal_moves:
+            print("No legal moves")
+            break
 
-    board, reward, game_over, info = env.step()
+        # Chosing random action from legal moves
+        action = np.random.choice(legal_moves)
 
-    if game_over:
-        print(f"Game over {info}")
+        # Execute step
+        board, reward, game_over, info = env.step(action)
+
+        if game_over:
+            print(f"Game over {info}")
 
     env.save_gif("test_run.gif")
 
