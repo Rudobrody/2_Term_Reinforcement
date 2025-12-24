@@ -5,11 +5,12 @@ import matplotlib.colors as mcolors
 import numpy as np
 import imageio
 import os
+import itertools
 from enum import Enum, auto
 
 
 # Define constants
-TARGET = 16
+TARGET = 8
 GRID_SIZE = 3
 SEED = 42
 
@@ -50,13 +51,80 @@ class Adversarial2048Env:
         self.current_player = Player.SLIDER # First move has a Slider
 
         # Visualization cache
-        self.frames = []
+        # self.frames = []
+        self.history = []
 
         # Define color map
         self.tile_colors = {
             0: "#000000", 2: "#FA4F00", 4: "#FAF603", 8: "#47FC00", 16: "#00FFFF", 32: "#CC00FF"
         }
 
+        # Define possible values
+        self.values = [0] + [2**i for i in range(1, int(np.log2(self.target)) + 1)]
+
+
+    def get_all_states(self) -> list[tuple]:
+        """Generates all possible 3x3 boards. So all combinations of value in every tail"""
+        print("Generating state space..")
+        
+        # Making cartesian product
+        states = list(itertools.product(self.values, repeat=self.grid_size * self.grid_size))
+        print(f"State space generated. The number of all states is equal: {len(states)}")
+        return states
+    
+
+    def get_next_states(self, state, action):
+        """
+        Calculate probabilities to go to the next state
+        
+        Returns:
+            tuple: {next_state_tuple: probability}
+        """
+        # Convert tuple state to numpy array
+        current_board = np.array(state).reshape(self.grid_size, self.grid_size)
+
+        # Simulate the slide
+        slip_board, _ = self._apply_slide(action, board=current_board)
+
+        # Simulate the spawn
+        empties = list(zip(*np.where(slip_board == 0)))
+
+        if not empties:
+            return {tuple(slip_board.flatten()): 1.0}
+        
+        # Calculate the probabilities, numbers are spawned uniform
+        transitions = {}
+        prob = 1.0 / len(empties)
+
+        # Simulate creating 2 in every empty space
+        for r, c in empties:
+
+            # Becuase we simulate we 
+            candidate = slip_board.copy()
+            candidate[r, c] = 2 # always will spawn '2'
+
+            next_state_tuple = tuple(candidate.flatten())
+
+            if next_state_tuple in transitions:
+                transitions[next_state_tuple] += prob
+            else:
+                transitions[next_state_tuple] = prob
+
+        return transitions
+
+    def get_reward(self, state, action, next_state):
+        """Retruns the reward for taking 'action' in 'state'"""
+        # Convert to array
+        current_board = np.array(state).reshape(self.grid_size, self.grid_size)
+
+        # Simulate the slide to get the merge reward
+        _, reward = self._apply_slide(action, board=current_board)
+
+        # Add bonus for win if target is reached
+        if self.target in next_state:
+            reward += 100
+
+        return reward
 
     def reset(self) -> np.array:
         """
@@ -67,7 +135,8 @@ class Adversarial2048Env:
         """
 
         self.board = np.zeros((self.grid_size, self.grid_size), dtype=int)
-        self.frames = []
+        #self.frames = []
+        self.history = []
 
         # Spawning two tiles randomly
         empty_cells = self._get_empty_cells()
@@ -84,6 +153,9 @@ class Adversarial2048Env:
                 self.board[r, c] = 2
             
         self.current_player = Player.SLIDER
+
+        # Record initial state (t=0)
+        self._record_history(self.board, self.board, "Start")
 
         return self.board.copy()
     
@@ -193,6 +265,9 @@ class Adversarial2048Env:
             game_over (bool): True if game over 
             info (dict): Contains player turn for the next step
         """
+        # Capture state beofre move
+        prev_board = self.board.copy()
+        mover_name = self.current_player.name
 
         reward = 0.0
         game_over = False
@@ -234,15 +309,31 @@ class Adversarial2048Env:
 
         info['turn'] = self.current_player.name
         
+        # Save the history
+        self._record_history(prev_board, self.board, mover_name)
+
         return self.board.copy(), reward, game_over, info
 
 
-    def _apply_slide(self, action: int) -> tuple[np.ndarray, float]:
-        """
-        Simulates a slide action. Returns (new_board, reward)
-        """
+    def _record_history(self, prev, curr, mover):
+        """Stores copies of the board states"""
+        self.history.append({
+            "prev": prev.copy(),
+            "curr": curr.copy(),
+            "mover": mover
+        })
 
-        board_rot = np.copy(self.board)
+    def _apply_slide(self, action: int, board: np.ndarray = None) -> tuple[np.ndarray, float]:
+        """
+        Simulates a slide action. Returns (new_board, reward). It accepts optional
+        'board' argument for simulation of movement
+        """
+        if board is None:
+            board_to_use = self.board
+        else:
+            board_to_use = board
+
+        board_rot = np.copy(board_to_use)
 
         # Roate board sot he desired direction is always 'LEFT'
         rotation = 0
@@ -325,30 +416,13 @@ class Adversarial2048Env:
         return False
     
 
-    def render(self):
+    def render_frame(self, board_prev, board_curr, mover_name):
         """Renders the current board and save the frame"""
 
-        fig, ax = plt.subplots(figsize=(4,4))
-        ax.set_xlim(0, self.grid_size)
-        ax.set_ylim(0, self.grid_size)
-        ax.axis('off')
-        ax.invert_yaxis()
-
-        for r in range(self.grid_size):
-            for c in range(self.grid_size):
-                val = self.board[r, c]
-                color = self.tile_colors.get(val, '#FFFFFF') # white color for values > 32
-
-                # Draw tile
-                rect = plt.Rectangle((c, r), width=1, height=1, facecolor=color, edgecolor='white', linewidth=2)
-                ax.add_patch(rect)
-
-                # Draw text
-                if val > 0:
-                    text_color = "#ffffff" if val > 4 else "#be8c59"
-                    ax.text(c + 0.5, r + 0.5, str(val), ha='center', va='center', fontsize=20, fontweight='bold', color=text_color)
-
-        plt.title(f"Turn: {self.current_player.name}")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8,4))
+        fig.suptitle(f"Turn {mover_name}", fontsize=14, fontweight="bold")
+        self._draw_board(ax1, board_prev, "Before")
+        self._draw_board(ax2, board_curr, "After")
 
         # Save to buffer for GIF
 
@@ -365,18 +439,47 @@ class Adversarial2048Env:
         # Drop the alpha channel (transparency) to get RGB
         image = image[:, :, :3]
 
-        self.frames.append(image)
+        #self.frames.append(image)
 
         plt.close(fig)
-    
-    
-    def save_gif(self, filename='game_replay.gif'):
+
+        return image
+
+
+    def _draw_board(self, ax, board, title):
+        ax.clear()
+        ax.set_xlim(0, self.grid_size)
+        ax.set_ylim(0, self.grid_size)
+        ax.axis('off')
+        ax.invert_yaxis()
+        ax.set_title(title)
+
+        for r in range(self.grid_size):
+            for c in range(self.grid_size):
+                val = board[r, c]
+                color = self.tile_colors.get(val, '#FFFFFF') # white color for values > 32
+
+                # Draw tile
+                rect = plt.Rectangle((c, r), width=1, height=1, facecolor=color, edgecolor='white', linewidth=2)
+                ax.add_patch(rect)
+
+                # Draw text
+                if val > 0:
+                    text_color = "#ffffff" if val > 4 else "#be8c59"
+                    ax.text(c + 0.5, r + 0.5, str(val), ha='center', va='center', fontsize=20, fontweight='bold', color=text_color)
+
+        
+    def save_gif(self, history, filename='game_replay.gif'):
         """Saves the recorded frames as a GIF"""
-        if not self.frames:
-            print("No frames to save")
-            return
-        imageio.mimsave(filename, self.frames, fps=0.2)
-        print(f"GIF saved to {filename}")
+        frames = []
+
+        for step_data in history:
+            frame = self.render_frame(step_data['prev'], step_data['curr'], step_data['mover'])
+            frames.append(frame)
+
+        if frames:
+            imageio.mimsave(filename, frames, fps=0.2)
+            print(f"GIF saved to {filename}")
 
 
 if __name__ == "__main__":
@@ -384,8 +487,7 @@ if __name__ == "__main__":
     board = env.reset()
 
     # Simulate a few random movers
-    for _ in range(10):
-        env.render()
+    for _ in range(20):
 
         # Get legal moves, inside of function it is devided on cases 'current player'
         legal_moves = env.get_legal_moves()
@@ -403,6 +505,7 @@ if __name__ == "__main__":
         if game_over:
             print(f"Game over {info}")
 
-    env.save_gif("test_run.gif")
+    #env.render_frame()
+    env.save_gif(env.history, "test_run.gif")
 
     
