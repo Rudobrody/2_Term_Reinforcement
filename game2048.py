@@ -67,7 +67,7 @@ class Adversarial2048Env:
         """Generates all possible 3x3 boards. So all combinations of value in every tail"""
         print("Generating state space..")
         
-        # Making cartesian product
+        # Making cartesian product, it should give us 4^9 = 262,144 states
         states = list(itertools.product(self.values, repeat=self.grid_size * self.grid_size))
         print(f"State space generated. The number of all states is equal: {len(states)}")
         return states
@@ -99,18 +99,21 @@ class Adversarial2048Env:
         # Simulate creating 2 in every empty space
         for r, c in empties:
 
-            # Becuase we simulate we 
+            # Becuase we take a copy of slip board there always be only a one '2'
             candidate = slip_board.copy()
             candidate[r, c] = 2 # always will spawn '2'
 
+            # We create a flattened array with this new '2'
             next_state_tuple = tuple(candidate.flatten())
 
+            # This formula is boilerplate, because every state will be unique
             if next_state_tuple in transitions:
                 transitions[next_state_tuple] += prob
             else:
                 transitions[next_state_tuple] = prob
 
         return transitions
+
 
     def get_reward(self, state, action, next_state):
         """Retruns the reward for taking 'action' in 'state'"""
@@ -125,6 +128,7 @@ class Adversarial2048Env:
             reward += 100
 
         return reward
+
 
     def reset(self) -> np.array:
         """
@@ -159,6 +163,7 @@ class Adversarial2048Env:
 
         return self.board.copy()
     
+
     def get_legal_moves(self) -> list[int]:
         """Returns a list of legac actions for the current player"""
         if self.current_player == Player.SLIDER:
@@ -178,8 +183,14 @@ class Adversarial2048Env:
         return legal_moves
     
 
-    def _get_slider_moves(self) -> list[int]:
-        """Private helper: Checks whic of the directions are valid"""
+    def _get_slider_moves(self, board:np.ndarray=None) -> list[int]:
+        """
+        Private helper: Checks whic of the directions are valid
+        If 'board' is provided, checks that. If none, checks self.board
+        """
+        # Determine which board is current
+        current_board = self.board if board is None else board
+        
         legal_moves = []
 
         # Checking left side
@@ -188,11 +199,11 @@ class Adversarial2048Env:
         # We take columns 1 to n
         for r in range(self.grid_size):
             for c in range(1, self.grid_size):
-                val = self.board[r, c]
+                val = current_board[r, c]
 
                 # If there is non zero element so it has to have a neigbor, even 0
                 if val != 0:
-                    neighbor = self.board[r, c-1]
+                    neighbor = current_board[r, c-1]
                     if neighbor == 0 or neighbor == val:
                         can_left = True
                         break # If we found possible move left we don't check rest of rows
@@ -205,10 +216,10 @@ class Adversarial2048Env:
         # We take columns 0 to n-1 
         for r in range(self.grid_size):
             for c in range(0, self.grid_size - 1):
-                val = self.board[r, c]
+                val = current_board[r, c]
 
                 if val != 0:
-                    neighbor = self.board[r, c+1]
+                    neighbor = current_board[r, c+1]
                     if neighbor == 0 or neighbor == val:
                         can_right = True
                         break 
@@ -221,10 +232,10 @@ class Adversarial2048Env:
         # We take rows 1 to n 
         for r in range(1, self.grid_size):
             for c in range(self.grid_size):
-                val = self.board[r, c]
+                val = current_board[r, c]
 
                 if val != 0:
-                    neighbor = self.board[r-1, c]
+                    neighbor = current_board[r-1, c]
                     if neighbor == 0 or neighbor == val:
                         can_up = True
                         break 
@@ -237,10 +248,10 @@ class Adversarial2048Env:
         # We take rows 0 to n-1 
         for r in range(self.grid_size - 1):
             for c in range(self.grid_size):
-                val = self.board[r, c]
+                val = current_board[r, c]
 
                 if val != 0:
-                    neighbor = self.board[r+1, c]
+                    neighbor = current_board[r+1, c]
                     if neighbor == 0 or neighbor == val:
                         can_down = True
                         break 
@@ -248,6 +259,20 @@ class Adversarial2048Env:
         if can_down: legal_moves.append(Action.DOWN.value)
         
         return legal_moves
+
+
+    def get_possible_actions(self, state):
+        """Returns actions for a hypothetical 'state' without modyfing self.board"""
+        # Returns [] if the state is already a WIN state
+        if self.target in state:
+            return []
+        
+        # Convert tuple to an array
+        hypothetical_board = np.array(state).reshape(self.grid_size, self.grid_size)
+
+        # pass this board to get moves for slider
+        return self._get_slider_moves(board=hypothetical_board)
+
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, dict[str, any]]:
         """
@@ -507,5 +532,7 @@ if __name__ == "__main__":
 
     #env.render_frame()
     env.save_gif(env.history, "test_run.gif")
+
+
 
     
