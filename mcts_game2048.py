@@ -257,14 +257,33 @@ board = env.reset()
 done = False
 
 while not done:
-    state_tuple = to_hashable(board)
+    if env.current_player == Player.SLIDER:
+        state_tuple = to_hashable(board)
 
-    # Search for best action
-    action = mcts.get_action(state_tuple)
+        # Search for best action
+        action = mcts.get_action(state_tuple)
 
-    # Making a step
-    board, reward, done, info = env.step(action)
+        # If returned action is None it means that slider has no avaiable moves
+        if action is None:
+            print("MCTS Resigned")
+            break
 
+        # Making a step
+        board, reward, done, info = env.step(action)
+
+    elif env.current_player == Player.SPAWNER:
+        # If it is a game over
+        if done: break
+
+        spawner_moves = env.get_legal_moves()
+
+        if not spawner_moves:
+            break
+
+        spawner_action = np.random.choice(spawner_moves)
+
+        # Execute
+        board, reward, done, info = env.step(spawner_action)
 
 print(f"Game over. Result: {info}")
 
