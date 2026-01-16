@@ -2,6 +2,8 @@
 # Import env
 from game2048 import Action, Player, Adversarial2048Env
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # %%
 # Creating env
@@ -105,6 +107,51 @@ def value_iteration(env, gamma, theta):
     return policy, V
 
 # %%
+# Creating a function for heatmap
+def visualize_strategic_preference(value_dict, grid_size=3):
+    """
+    Visualize where the agent prefer to keep its highest tile
+    
+    Args:
+        value_dict: 
+        grid_size (int): Size of the board
+    """
+    # Creating accumulators for the heatmap
+    
+    # Value_sum sotres the total V for states where the max tile is at (row, column)
+    value_sum = np.zeros((grid_size, grid_size))
+
+    # Counts stores how many such states exist
+    counts = np.zeros((grid_size, grid_size))
+
+    for state_tuple, val in value_dict.items():
+        # Conver tuple to array to find max tile location
+        board = np.array(state_tuple).reshape(grid_size, grid_size)
+
+        # Find coordinates of the maximum tile
+        max_idx = np.argmax(board)
+
+        # Because argmax gives flat index we use unravel_index which converts to (row, column)
+        row, column = np.unravel_index(max_idx, (grid_size, grid_size))
+
+        value_sum[row, column] += val
+        counts[row, column] += 1
+
+    # Calculate the average value per cell, thanks that we add argument where there will be no error with devision by zero
+    avg_value_map = np.divide(value_sum, counts, out=np.zeros_like(value_sum), where=counts!=0)
+
+    # Plot
+    plt.figure(figsize=(8,6))
+    sns.heatmap(avg_value_map, annot=True, cbar_kws={'label': 'Average Value'})
+    plt.title(f"Agent strategy: Max tile preferred place", fontsize=14, fontweight='bold')
+    plt.xlabel('column')
+    plt.ylabel('Row')
+
+    # Saving
+    plt.savefig('Heatmap_passive.png')
+
+
+# %%
 optimal_policy, optimal_value = value_iteration(env_2048, 0.9, 0.001)
 
 # %%
@@ -128,4 +175,5 @@ for state, action in optimal_policy.items():
             print("----------------")
 
 print(f"Total states where action is NOT Left: {count_non_left}")
-# %%
+
+visualize_strategic_preference(optimal_value)
