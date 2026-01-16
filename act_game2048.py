@@ -2,6 +2,7 @@
 # Import env
 from game2048 import Action, Player, Adversarial2048Env
 import numpy as np
+import pandas as pd
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -156,6 +157,8 @@ class QLearningAgent:
         self.epsilon = 0
         self.alpha = 0
 
+# %% 
+
 # %%
 # Creating helper to convert a numpy array to a hashable tuple
 def to_hashable(board_array: np.ndarray) -> tuple:
@@ -164,7 +167,7 @@ def to_hashable(board_array: np.ndarray) -> tuple:
 
 # %%
 # Play and train implementation
-def play_and_train(env, agent):
+def play_and_train(env, slider_agent, spawner_agent):
     """
     This function should
     - run a full game, actions given by agent's e-greedy policy
@@ -172,30 +175,77 @@ def play_and_train(env, agent):
     - return total reward
     """
     total_reward = 0.0
-    state = env.reset()
+    board = env.reset()
+
+    # Memory to punish the spawner later, because spawner has to wait for move of slider
+    last_spawner_state = None
+    last_spawner_action = None
 
     # Convert to hashable tuple for the Agent
-    state = to_hashable(state)
+    state = to_hashable(board)
 
     done = False
 
     while not done:
-        # get agent to pick action given state state.
-        action = agent.get_action(state)
 
-        next_state, reward, done, _ = env.step(action)
-        next_state = to_hashable(next_state)
-        #
-        # INSERT CODE HERE to train (update) agent for state
-        #        
-        # Update tell me how good is to take action "a" in a state "s"
-        agent.update(state, action, reward, next_state)
+        # Slider turn
+        if env.current_player == Player.SLIDER:
+            
+            # get agent to pick action given state state.
+            action = slider_agent.get_action(state)
 
-        # Updating of next state
-        state = next_state
-        total_reward += reward
-        if done:
-            break
+            # Checking game over
+            if action is None: 
+                
+                # Give him a punishment 
+                slider_agent.update(state, 0, -100, state) # dummy 0, placeholder
+                
+                # And give also a big reward for spawner
+                if last_spawner_state:
+                    spawner_agent.update(last_spawner_state, last_spawner_action, 100, state)
+                break
+
+            # Make a step
+            next_state, slider_reward, done, _ = env.step(action)
+            next_state = to_hashable(next_state)
+              
+            # Update tell me how good is to take action "a" in a state "s"
+            slider_agent.update(state, action, slider_reward, next_state)
+
+            # Update spawner
+            if last_spawner_state is not None:
+
+                # Logic is simple, spawner will get inverse reward of slider
+                spawner_reward = -slider_reward
+                spawner_agent.update(last_spawner_state, last_spawner_action, spawner_reward, next_state)
+
+            # Updating of next state
+            state = next_state
+            total_reward += slider_reward
+        
+        # Spawner turn
+        elif env.current_player == Player.SPAWNER:
+            
+            if done: break
+
+            # Get action for spawner, he sees the same state but has different actions
+            spawner_action = spawner_agent.get_action(state)
+            
+            # If board is full - there is no place to spawn 
+            if spawner_action is None: break
+
+            # make a step, spawn reward will be almost always 0 because there is no points for spawning 2, but there is spawner reward after move of slider
+            next_state, spawn_reward, done, _ = env.step(spawner_action)
+
+            # Update state, so spawner could see a new tile
+            next_state = to_hashable(next_state)
+
+            # Store memory (wait for slider's reation before updating)
+            last_spawner_state = state
+            last_spawner_action = action
+
+            # Updating of next state
+            state = next_state
 
     return total_reward
 
@@ -210,7 +260,8 @@ for i in tqdm(range(1000), desc="Training episodes"):
     
 
 plt.plot(rewards)
-plt.ylabel('some numbers')
+plt.ylabel('Rewards')
+plt.xlabel('Number of episode')
 plt.savefig('training_curve.png')
 
 # %%
