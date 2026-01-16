@@ -44,8 +44,10 @@ def value_iteration(env, gamma, theta):
     V = dict()
     policy = dict()
 
+    all_states = env.get_all_states()
+
     # init with a policy with first avail action for each state
-    for current_state in env.get_all_states():
+    for current_state in all_states:
         V[current_state] = 0
 
         # Get actions for this specific state
@@ -64,7 +66,7 @@ def value_iteration(env, gamma, theta):
         delta = 0
         
         # For each state
-        for state in env.get_all_states():
+        for state in all_states:
             # Skip terminal states
             if not env.get_possible_actions(state):
                 continue
@@ -137,12 +139,13 @@ def visualize_strategic_preference(value_dict, grid_size=3):
         value_sum[row, column] += val
         counts[row, column] += 1
 
-    # Calculate the average value per cell, thanks that we add argument where there will be no error with devision by zero
+    # Calculate the average value per cell, thanks that we add argument 'where' there will be no error with division by zero
+    # Why we define out? because there must be information what value put when there is division by zero
     avg_value_map = np.divide(value_sum, counts, out=np.zeros_like(value_sum), where=counts!=0)
 
     # Plot
     plt.figure(figsize=(8,6))
-    sns.heatmap(avg_value_map, annot=True, cbar_kws={'label': 'Average Value'})
+    sns.heatmap(avg_value_map, annot=True, cbar_kws={'label': 'Average Value'}) # Annot prints actual numerical value inside each cell
     plt.title(f"Agent strategy: Max tile preferred place", fontsize=14, fontweight='bold')
     plt.xlabel('column')
     plt.ylabel('Row')

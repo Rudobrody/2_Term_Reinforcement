@@ -12,7 +12,7 @@ from enum import Enum, auto
 # Define constants
 TARGET = 8
 GRID_SIZE = 3
-SEED = 42
+SEED = 43
 
 
 class Action(Enum):
