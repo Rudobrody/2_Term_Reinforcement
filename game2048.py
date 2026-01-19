@@ -10,8 +10,8 @@ from enum import Enum, auto
 
 
 # Define constants
-TARGET = 8
-GRID_SIZE = 3
+# TARGET = 8
+# GRID_SIZE = 3
 SEED = 43
 
 
@@ -38,10 +38,10 @@ class Adversarial2048Env:
     Second Agnt (Spawner): Spawner places a '2' or '4' tile in empty spots to block First Player
     """
 
-    def __init__(self):
+    def __init__(self, grid_size, target):
         """Initializes the environment with a 3x3 grid"""
-        self.grid_size = GRID_SIZE
-        self.target = TARGET
+        self.grid_size = grid_size
+        self.target = target
         self._rng = np.random.default_rng(SEED)
 
         # Initialization of board
@@ -164,20 +164,27 @@ class Adversarial2048Env:
         return self.board.copy()
     
 
-    def get_legal_moves(self) -> list[int]:
-        """Returns a list of legac actions for the current player"""
+    def get_legal_moves(self, state=None) -> list[int]:
+        """Returns a list of legac actions for the current player in a given state"""
+
+        # If a state tuple is provided, convert it to a board array, QLearning need it to insepct future
+        board_to_check = None
+        if state is not None:
+            board_to_check = np.array(state).reshape(self.grid_size, self.grid_size)
+
         if self.current_player == Player.SLIDER:
-            return self._get_slider_moves()
+            return self._get_slider_moves(board=board_to_check)
         elif self.current_player == Player.SPAWNER:
-            return self._get_spawner_moves()
+            return self._get_spawner_moves(board=board_to_check)
 
 
-    def _get_spawner_moves(self)-> list[int]:
-        """Private heler: Returns all empty cell indices"""
+    def _get_spawner_moves(self, board: np.ndarray=None)-> list[int]:
+        """Private heler: Returns all empty cell indices for specific board"""
         legal_moves = []
 
         # All empty cells are legal moves
-        empties = self._get_empty_cells()
+        empties = self._get_empty_cells(board)
+
         for r, c in empties:
             legal_moves.append(r * self.grid_size + c)
         return legal_moves
@@ -262,7 +269,7 @@ class Adversarial2048Env:
 
 
     def get_possible_actions(self, state):
-        """Returns actions for a hypothetical 'state' without modyfing self.board"""
+        """Returns actions for slider for a hypothetical 'state' without modyfing self.board"""
         # Returns [] if the state is already a WIN state
         if self.target in state:
             return []
@@ -348,6 +355,7 @@ class Adversarial2048Env:
             "mover": mover
         })
 
+
     def _apply_slide(self, action: int, board: np.ndarray = None) -> tuple[np.ndarray, float]:
         """
         Simulates a slide action. Returns (new_board, reward). It accepts optional
@@ -415,9 +423,11 @@ class Adversarial2048Env:
         return new_board, total_reward
 
 
-    def _get_empty_cells(self) -> list[tuple[int, int]]:
-        """Returns list of (row, col) for all empty cells"""
-        return list(zip(*np.where(self.board == 0)))
+    def _get_empty_cells(self, board: np.ndarray = None) -> list[tuple[int, int]]:
+        """Returns list of (row, col) for all empty cells on a specific board"""
+        # Use the passed board if it exsits, otherwise use the real self.board
+        current_board = self.board if board is None else board
+        return list(zip(*np.where(current_board == 0)))
     
 
     def _can_slider_move(self) -> bool:
@@ -508,7 +518,7 @@ class Adversarial2048Env:
 
 
 if __name__ == "__main__":
-    env = Adversarial2048Env()
+    env = Adversarial2048Env(3, 8)
     board = env.reset()
 
     # Simulate a few random movers
@@ -532,7 +542,4 @@ if __name__ == "__main__":
 
     #env.render_frame()
     env.save_gif(env.history, "test_run.gif")
-
-
-
     
