@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 # %%
 # Creating env
-env_2048 = Adversarial2048Env()
+env_2048 = Adversarial2048Env(grid_size=3, target=8)
 board = env_2048.reset()
 
 # Generating all states
