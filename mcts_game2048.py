@@ -139,7 +139,7 @@ class AdversarialMCTS:
     Can be used bu either Slider or Spawner.
     """
         
-    def __init__(self, env, iterations: int=500, c_param=1.41, simulation_depth=30):
+    def __init__(self, env, iterations: int=500, c_param=1.41, simulation_depth=50):
         """
         Initialization of instance of MCTSAgent 
 
@@ -443,7 +443,7 @@ def run_experiment(targets: list[int], iteration_counts: list[int], num_games_pe
 
                 # Init agents
                 slider_mcts = AdversarialMCTS(env, iterations=iter)
-                spawner_mcts = AdversarialMCTS(env, iterations=iter//2)
+                spawner_mcts = AdversarialMCTS(env, iterations=iter)
 
                 # Play
                 result, _ = play_game(env, slider_mcts, spawner_mcts)
@@ -491,7 +491,7 @@ def plot_results(df):
 
     # Average score vs iterations
     plt.figure(figsize=(10, 7))
-    for t in targets:
+    for target in targets:
         subset = df[df['Target'] == target]
         plt.plot(subset['Iterations'], subset['Average Score'], label=f'target {target}')
 
@@ -518,7 +518,7 @@ if __name__ == "__main__":
 
     # Create agents
     slider_mcts = AdversarialMCTS(env, iterations=MCTS_ITERATIONS)
-    spawner_agent = AdversarialMCTS(env, iterations=MCTS_ITERATIONS // 2)
+    spawner_agent = AdversarialMCTS(env, iterations=MCTS_ITERATIONS)
 
     # Play games and track results
     results = {'WIN': 0, 'LOSS': 0, 'UNKNOWN': 0}
@@ -532,9 +532,9 @@ if __name__ == "__main__":
             env.save_gif(history, f"MCTS_game_t{TARGET}.gif")
 
     print(f"Slider wins: {results['WIN']}")
-    print(f"Slider Loses: {[results['LOSS']]}")
+    print(f"Slider Loses: {results['LOSS']}")
 
-    experiment_targets = [8, 16, 32]
+    experiment_targets = [32, 64, 128, 256, 512]
     experiment_iters = [50, 100, 200]
 
     # Run
