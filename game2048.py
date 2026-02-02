@@ -1,4 +1,4 @@
-import matplotlib
+import matplotlib 
 matplotlib.use("Agg") # This line is blocking pop up windows and it jsut saved img
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -171,6 +171,8 @@ class Adversarial2048Env:
         board_to_check = None
         if state is not None:
             board_to_check = np.array(state).reshape(self.grid_size, self.grid_size)
+        else:
+            board_to_check = self.board
 
         if self.current_player == Player.SLIDER:
             return self._get_slider_moves(board=board_to_check)
@@ -192,7 +194,7 @@ class Adversarial2048Env:
 
     def _get_slider_moves(self, board:np.ndarray=None) -> list[int]:
         """
-        Private helper: Checks whic of the directions are valid
+        Private helper: Checks which of the directions are valid
         If 'board' is provided, checks that. If none, checks self.board
         """
         # Determine which board is current
@@ -370,9 +372,10 @@ class Adversarial2048Env:
 
         # Roate board sot he desired direction is always 'LEFT'
         rotation = 0
-        if action == Action.DOWN.value: rotation = 1
+        # Because np.rot90 is CCW so if we rotate once this will simulate move UP
+        if action == Action.DOWN.value: rotation = 3
         elif action == Action.RIGHT.value: rotation = 2
-        elif action == Action.UP.value: rotation = 3
+        elif action == Action.UP.value: rotation = 1
 
         # Rotate grid counter-clockwise to align move to LEFT
         board_rot = np.rot90(board_rot, k=rotation)
@@ -517,12 +520,13 @@ class Adversarial2048Env:
             print(f"GIF saved to {filename}")
 
 
+
 if __name__ == "__main__":
-    env = Adversarial2048Env(3, 8)
+    env = Adversarial2048Env(grid_size=3, target=16)
     board = env.reset()
 
     # Simulate a few random movers
-    for _ in range(20):
+    for _ in range(30):
 
         # Get legal moves, inside of function it is devided on cases 'current player'
         legal_moves = env.get_legal_moves()
